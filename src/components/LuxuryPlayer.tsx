@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import WaveSurfer from 'wavesurfer.js';
-import { Play, Pause, Loader2, Activity, Zap, Volume2, Layers, Clock } from 'lucide-react';
+import { Play, Pause, Loader2, Activity, Zap, Volume2, Clock } from 'lucide-react';
 
 interface LuxuryPlayerProps {
   beforeUrl: string;
@@ -15,20 +15,18 @@ interface LuxuryPlayerProps {
 export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags }: LuxuryPlayerProps) {
   const playerId = useRef(Math.random().toString(36).substr(2, 9));
 
-  // Referencias DOM
+  // Referencias
   const containerRef = useRef<HTMLDivElement>(null);
   const masterContainerRef = useRef<HTMLDivElement>(null);
   const mixContainerRef = useRef<HTMLDivElement>(null);
   const spectrumCanvasRef = useRef<HTMLCanvasElement>(null);
   
-  // Referencias Audio y Lógica
+  // Referencias Audio
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const sourceNodesRef = useRef<Map<string, MediaElementAudioSourceNode>>(new Map());
   
-  // --- CORRECCIÓN PARA VERCEL (Línea 29) ---
-  // Antes: useRef<number>(); -> Error
-  // Ahora: useRef<number | null>(null); -> Correcto
+  // --- CORRECCIÓN PARA VERCEL: Inicializar en null ---
   const animationRef = useRef<number | null>(null);
   
   const isComponentMounted = useRef(true);
@@ -43,7 +41,6 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags 
   const [isReady, setIsReady] = useState(false);
   const [detectedLufs, setDetectedLufs] = useState<string>("ANALIZANDO...");
   
-  // Gain Match
   const [gainMatch, setGainMatch] = useState(false);
   const [calculatedReduction, setCalculatedReduction] = useState(1);
 
@@ -56,13 +53,11 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags 
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
-  // Click Maestro
   const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!masterWave.current || !mixWave.current || !containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const progress = x / rect.width;
-    
     masterWave.current.seekTo(progress);
     mixWave.current.seekTo(progress);
   };
@@ -89,10 +84,9 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags 
 
       const rawMaster = masterBuffer.getChannelData(0);
       let sumMaster = 0;
-      const step = Math.ceil(rawMaster.length / 10000);
+      const step = Math.ceil(rawMaster.length / 1000);
       for (let i = 0; i < rawMaster.length; i += step) sumMaster += rawMaster[i] * rawMaster[i];
       const rmsMaster = Math.sqrt(sumMaster / (rawMaster.length / step));
-      
       const db = 20 * Math.log10(rmsMaster);
       setDetectedLufs(`${(db + 2.5).toFixed(1)} LUFS`);
 
@@ -100,10 +94,8 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags 
       let sumMix = 0;
       for (let i = 0; i < rawMix.length; i += step) sumMix += rawMix[i] * rawMix[i];
       const rmsMix = Math.sqrt(sumMix / (rawMix.length / step));
-
       const ratio = rmsMix / rmsMaster;
-      const safeRatio = Math.min(Math.max(ratio, 0.1), 1.0); 
-      setCalculatedReduction(safeRatio);
+      setCalculatedReduction(Math.min(Math.max(ratio, 0.1), 1.0));
       setTotalDuration(formatTime(master.getDuration()));
     } catch (e) {
       setDetectedLufs("-.- LUFS");
@@ -134,9 +126,7 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags 
       if (!isComponentMounted.current) return;
       animationRef.current = requestAnimationFrame(draw);
       analyserRef.current!.getByteFrequencyData(dataArray);
-      
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-
       ctx.shadowBlur = 8;
       ctx.shadowColor = "rgba(212, 175, 55, 0.15)";
 
@@ -194,14 +184,10 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags 
     if (!masterContainerRef.current || !mixContainerRef.current) return;
 
     const ctx = document.createElement('canvas').getContext('2d')!;
-
-    // MASTER COLORES
     const gradMasterProgress = ctx.createLinearGradient(0, 0, 0, 100);
     gradMasterProgress.addColorStop(0, '#FFFFFF'); 
     gradMasterProgress.addColorStop(0.3, '#FFD700'); 
     gradMasterProgress.addColorStop(1, '#FF8C00'); 
-
-    // MIX COLORES
     const gradMixProgress = ctx.createLinearGradient(0, 0, 0, 100);
     gradMixProgress.addColorStop(0, '#FFFFFF'); 
     gradMixProgress.addColorStop(1, '#00FFFF');
@@ -209,8 +195,8 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags 
     const commonOptions = {
       cursorColor: 'transparent',
       cursorWidth: 0,
-      barWidth: 3, 
-      barGap: 2,
+      barWidth: 2, 
+      barGap: 3,
       barRadius: 2,
       height: 80,
       barAlign: 'center' as const,
@@ -222,14 +208,14 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags 
       ...commonOptions,
       container: masterContainerRef.current,
       progressColor: gradMasterProgress,
-      waveColor: '#B8860B', // Sólido para que se vea
+      waveColor: 'rgba(184, 134, 11, 0.4)', 
     });
 
     mixWave.current = WaveSurfer.create({
       ...commonOptions,
       container: mixContainerRef.current,
       progressColor: gradMixProgress,
-      waveColor: '#4A5568', // Sólido
+      waveColor: 'rgba(75, 85, 99, 0.5)', 
     });
 
     const loadAudios = async () => {
@@ -239,19 +225,15 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags 
               mixWave.current?.load(beforeUrl)
           ]);
           if (!isComponentMounted.current) return;
-          
           masterWave.current?.setVolume(1);
           mixWave.current?.setVolume(0);
-          
           if (masterWave.current && mixWave.current) {
-             // Delay para asegurar carga y análisis
-             setTimeout(() => {
-                 if (masterWave.current && mixWave.current) {
-                     analyzeAudio(masterWave.current, mixWave.current);
-                 }
-             }, 500);
+            setTimeout(() => {
+                if (masterWave.current && mixWave.current) {
+                    analyzeAudio(masterWave.current, mixWave.current);
+                }
+            }, 500);
           }
-          
           setIsReady(true);
         } catch (error) {
           console.error("Error loading audio");
@@ -287,9 +269,9 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags 
     masterWave.current.on('pause', () => mixWave.current?.pause());
     masterWave.current.on('finish', () => setIsPlaying(false));
 
-    // --- CORRECCIÓN LIMPIEZA PARA VERCEL ---
     return () => {
       isComponentMounted.current = false;
+      // --- CORRECCIÓN PARA VERCEL: Checar si es null ---
       if (animationRef.current !== null) {
           cancelAnimationFrame(animationRef.current);
       }
@@ -365,7 +347,6 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags 
         onClick={handleSeek} 
         className="relative h-24 mb-6 bg-black/60 rounded-lg border border-white/5 overflow-hidden transition-all duration-300 group-hover:bg-black/90 cursor-crosshair z-20 flex items-center justify-center"
       >
-        {/* CANVAS */}
         <canvas 
             ref={spectrumCanvasRef} 
             className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[85%] h-[75%]" 
@@ -377,10 +358,9 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags 
             }}
         />
 
-        {/* Ondas */}
         <div className="absolute inset-0 w-full h-full z-10 pointer-events-none opacity-0">
-            <div ref={masterContainerRef} className={`absolute inset-0 w-full transition-opacity duration-300 ${isMaster ? 'opacity-100' : 'opacity-0'}`} />
-            <div ref={mixContainerRef} className={`absolute inset-0 w-full transition-opacity duration-300 ${!isMaster ? 'opacity-100' : 'opacity-0'}`} />
+            <div ref={masterContainerRef} className="absolute inset-0 w-full" />
+            <div ref={mixContainerRef} className="absolute inset-0 w-full" />
         </div>
 
         {!isReady && (
