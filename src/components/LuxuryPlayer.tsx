@@ -15,35 +15,26 @@ interface LuxuryPlayerProps {
 
 export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags, lufs }: LuxuryPlayerProps) {
   const playerId = useRef(Math.random().toString(36).substr(2, 9));
-
-  // Referencias DOM
   const containerRef = useRef<HTMLDivElement>(null);
   const masterContainerRef = useRef<HTMLDivElement>(null);
   const mixContainerRef = useRef<HTMLDivElement>(null);
   const spectrumCanvasRef = useRef<HTMLCanvasElement>(null);
-  
-  // Referencias Audio
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const sourceNodesRef = useRef<Map<string, MediaElementAudioSourceNode>>(new Map());
   
-  // Referencias Lógica
+  // --- CORRECCIÓN OBLIGATORIA PARA VERCEL ---
   const animationRef = useRef<number | null>(null);
+  
   const isComponentMounted = useRef(true);
   const capsRef = useRef<number[]>([]); 
-
   const masterWave = useRef<WaveSurfer | null>(null);
   const mixWave = useRef<WaveSurfer | null>(null);
-
-  // Estados
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMaster, setIsMaster] = useState(true);
   const [isReady, setIsReady] = useState(false);
-  
   const [gainMatch, setGainMatch] = useState(false);
   const calculatedReduction = 0.6; 
-  const [detectedLufs, setDetectedLufs] = useState<string>("ANALIZANDO...");
-
   const [currentTime, setCurrentTime] = useState("0:00");
   const [totalDuration, setTotalDuration] = useState("0:00");
 
@@ -58,7 +49,6 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags,
     const rect = containerRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const progress = x / rect.width;
-    
     masterWave.current.seekTo(progress);
     mixWave.current.seekTo(progress);
   };
@@ -82,15 +72,11 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags,
     const canvas = spectrumCanvasRef.current;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-
     analyserRef.current.fftSize = 256; 
     const bufferLength = analyserRef.current.frequencyBinCount;
     const dataArray = new Uint8Array(bufferLength);
     const barsToShow = 64; 
-    
-    if (capsRef.current.length !== barsToShow) {
-        capsRef.current = new Array(barsToShow).fill(0);
-    }
+    if (capsRef.current.length !== barsToShow) capsRef.current = new Array(barsToShow).fill(0);
 
     const gradient = ctx.createLinearGradient(0, canvas.height, 0, 0);
     gradient.addColorStop(0, 'rgba(139, 69, 19, 0.1)');
@@ -101,12 +87,9 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags,
       if (!isComponentMounted.current) return;
       animationRef.current = requestAnimationFrame(draw);
       analyserRef.current!.getByteFrequencyData(dataArray);
-      
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-
       ctx.shadowBlur = 8;
       ctx.shadowColor = "rgba(212, 175, 55, 0.15)";
-
       const barWidth = (canvas.width / barsToShow) * 0.8;
       const gap = (canvas.width / barsToShow) * 0.2;
       let x = 0;
@@ -114,19 +97,16 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags,
       for (let i = 0; i < barsToShow; i++) {
         const dataIndex = Math.floor(i * (bufferLength / barsToShow) * 0.8);
         let barHeight = (dataArray[dataIndex] / 255) * canvas.height;
-
         if (barHeight > capsRef.current[i]) {
             capsRef.current[i] = barHeight;
         } else {
             capsRef.current[i] = Math.max(barHeight, capsRef.current[i] - 1.2); 
         }
-
         ctx.fillStyle = gradient;
         ctx.beginPath();
         const visualBarHeight = barHeight * 0.8; 
         ctx.roundRect(x, canvas.height - visualBarHeight, barWidth, visualBarHeight, [2, 2, 0, 0]);
         ctx.fill();
-
         const capY = canvas.height - (capsRef.current[i] * 0.8) - 4; 
         ctx.fillStyle = 'rgba(255, 248, 220, 0.5)'; 
         ctx.fillRect(x, capY, barWidth, 2); 
@@ -159,9 +139,8 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags,
   useEffect(() => {
     isComponentMounted.current = true;
     if (!masterContainerRef.current || !mixContainerRef.current) return;
-
     const ctx = document.createElement('canvas').getContext('2d')!;
-
+    
     const gradMasterProgress = ctx.createLinearGradient(0, 0, 0, 100);
     gradMasterProgress.addColorStop(0, '#FFFFFF'); 
     gradMasterProgress.addColorStop(0.3, '#FFD700'); 
@@ -178,9 +157,9 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags,
       barGap: 3,
       barRadius: 2,
       height: 80,
+      barAlign: 'center' as const,
       normalize: true,
       interact: false, 
-      // ELIMINADO barAlign PARA EVITAR ERROR DE TYPESCRIPT
     };
 
     masterWave.current = WaveSurfer.create({
@@ -204,16 +183,13 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags,
               mixWave.current?.load(beforeUrl)
           ]);
           if (!isComponentMounted.current) return;
-          
           masterWave.current?.setVolume(1);
           mixWave.current?.setVolume(0);
-          
           if(masterWave.current) {
              setTimeout(() => {
                  if (masterWave.current) setTotalDuration(formatTime(masterWave.current.getDuration()));
              }, 500);
           }
-          
           setIsReady(true);
         } catch (error) {
           console.error("Error loading audio");
@@ -291,8 +267,6 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags,
   return (
     <div className="w-full max-w-2xl bg-[#0a0a0a] border border-white/10 rounded-2xl p-6 shadow-2xl backdrop-blur-md transition-all duration-300 hover:border-[#D4AF37]/80 hover:shadow-[0_0_30px_rgba(212,175,55,0.15)] group relative overflow-hidden">
       <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-[#D4AF37]/5 to-transparent pointer-events-none" />
-
-      {/* HEADER */}
       <div className="flex justify-between items-start mb-6 relative z-10">
         <div className="flex-1 min-w-0">
           <h3 className="text-lg font-bold text-white tracking-wide truncate pr-4">{title}</h3>
@@ -303,7 +277,6 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags,
              ))}
           </div>
         </div>
-        
         <div className="flex items-center gap-3">
             <button 
                 onClick={(e) => { e.stopPropagation(); setGainMatch(!gainMatch); }}
@@ -319,8 +292,6 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags,
             </div>
         </div>
       </div>
-
-      {/* ZONA VISUAL */}
       <div 
         ref={containerRef}
         onClick={handleSeek} 
@@ -336,20 +307,16 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags,
                 WebkitMaskImage: 'linear-gradient(to right, transparent 0%, black 15%, black 85%, transparent 100%)'
             }}
         />
-
         <div className="absolute inset-0 w-full h-full z-10 pointer-events-none opacity-0">
             <div ref={masterContainerRef} className="absolute inset-0 w-full" />
             <div ref={mixContainerRef} className="absolute inset-0 w-full" />
         </div>
-
         {!isReady && (
             <div className="absolute inset-0 flex items-center justify-center z-[100] bg-black/90 backdrop-blur-sm">
                 <Loader2 className="animate-spin text-[#D4AF37] w-6 h-6" />
             </div>
         )}
       </div>
-
-      {/* CONTROLES */}
       <div className="flex items-center justify-between px-4 relative z-30">
         <div className="flex items-center gap-4">
             <button onClick={toggleVersion} disabled={!isReady} className="flex flex-col items-center gap-1 group/btn opacity-80 hover:opacity-100 transition disabled:opacity-30 cursor-pointer">
@@ -365,11 +332,9 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags,
                 <span className="opacity-50">{totalDuration}</span>
             </div>
         </div>
-
         <button onClick={togglePlay} disabled={!isReady} className={`absolute left-1/2 -translate-x-1/2 w-14 h-14 rounded-full flex items-center justify-center transition-all active:scale-95 disabled:opacity-50 disabled:scale-100 ${isReady ? 'bg-white text-black hover:scale-110 shadow-[0_0_25px_rgba(212,175,55,0.15)]' : 'bg-gray-800 text-gray-600'}`}>
           {isPlaying ? <Pause size={24} fill="black" /> : <Play size={24} fill="black" className="ml-1" />}
         </button>
-
         <div className="w-8"></div>
       </div>
     </div>
