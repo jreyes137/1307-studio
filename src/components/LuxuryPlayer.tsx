@@ -27,9 +27,8 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags,
   const analyserRef = useRef<AnalyserNode | null>(null);
   const sourceNodesRef = useRef<Map<string, MediaElementAudioSourceNode>>(new Map());
   
-  // --- CORRECCIÓN CRÍTICA AQUÍ (LÍNEA 30 APROX) ---
+  // Referencias Lógica
   const animationRef = useRef<number | null>(null);
-  
   const isComponentMounted = useRef(true);
   const capsRef = useRef<number[]>([]); 
 
@@ -43,6 +42,7 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags,
   
   const [gainMatch, setGainMatch] = useState(false);
   const calculatedReduction = 0.6; 
+  const [detectedLufs, setDetectedLufs] = useState<string>("ANALIZANDO...");
 
   const [currentTime, setCurrentTime] = useState("0:00");
   const [totalDuration, setTotalDuration] = useState("0:00");
@@ -162,7 +162,6 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags,
 
     const ctx = document.createElement('canvas').getContext('2d')!;
 
-    // MASTER COLORES
     const gradMasterProgress = ctx.createLinearGradient(0, 0, 0, 100);
     gradMasterProgress.addColorStop(0, '#FFFFFF'); 
     gradMasterProgress.addColorStop(0.3, '#FFD700'); 
@@ -179,9 +178,9 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags,
       barGap: 3,
       barRadius: 2,
       height: 80,
-      barAlign: 'center' as const,
       normalize: true,
       interact: false, 
+      // ELIMINADO barAlign PARA EVITAR ERROR DE TYPESCRIPT
     };
 
     masterWave.current = WaveSurfer.create({
@@ -232,6 +231,7 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags,
             if (!analyserRef.current) {
                 analyserRef.current = audioContextRef.current.createAnalyser();
                 analyserRef.current.fftSize = 256; 
+                analyserRef.current.smoothingTimeConstant = 0.5; 
                 analyserRef.current.connect(audioContextRef.current.destination);
                 drawSpectrum();
             }
@@ -251,15 +251,11 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags,
 
     return () => {
       isComponentMounted.current = false;
-      
-      // --- CORRECCIÓN DE LIMPIEZA PARA VERCEL ---
       if (animationRef.current !== null) {
           cancelAnimationFrame(animationRef.current);
       }
-      
       masterWave.current?.destroy();
       mixWave.current?.destroy();
-      
       if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
         audioContextRef.current.close();
       }
