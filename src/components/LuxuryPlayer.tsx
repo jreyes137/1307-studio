@@ -10,24 +10,28 @@ interface LuxuryPlayerProps {
   title: string;
   artist: string;
   tags?: string[];
-  lufs: string; // Recibimos el dato directo, sin calcular
 }
 
-export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags, lufs }: LuxuryPlayerProps) {
+export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags }: LuxuryPlayerProps) {
   const playerId = useRef(Math.random().toString(36).substr(2, 9));
 
-  // Referencias
+  // Referencias DOM
   const containerRef = useRef<HTMLDivElement>(null);
   const masterContainerRef = useRef<HTMLDivElement>(null);
   const mixContainerRef = useRef<HTMLDivElement>(null);
   const spectrumCanvasRef = useRef<HTMLCanvasElement>(null);
   
-  // Referencias Audio
+  // Referencias Audio y Lógica
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const sourceNodesRef = useRef<Map<string, MediaElementAudioSourceNode>>(new Map());
-  const animationRef = useRef<number>();
+  
+  // --- CORRECCIÓN PARA VERCEL (TypeScript Strict) ---
+  const animationRef = useRef<number | null>(null);
+  
   const isComponentMounted = useRef(true);
+  
+  // Referencia para los "Picos Voladores"
   const capsRef = useRef<number[]>([]); 
 
   const masterWave = useRef<WaveSurfer | null>(null);
@@ -37,12 +41,10 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags,
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMaster, setIsMaster] = useState(true);
   const [isReady, setIsReady] = useState(false);
+  const [detectedLufs, setDetectedLufs] = useState<string>("ANALIZANDO...");
   
-  // Gain Match ahora es visual/manual, ya no calculamos RMS pesado
   const [gainMatch, setGainMatch] = useState(false);
-  // Asumimos una reducción estándar de -6dB para Gain Match si no analizamos
-  // O puedes poner un valor fijo seguro como 0.6
-  const calculatedReduction = 0.6; 
+  const [calculatedReduction, setCalculatedReduction] = useState(1);
 
   const [currentTime, setCurrentTime] = useState("0:00");
   const [totalDuration, setTotalDuration] = useState("0:00");
@@ -53,11 +55,13 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags,
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
+  // --- CLICK MAESTRO ---
   const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!masterWave.current || !mixWave.current || !containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const progress = x / rect.width;
+    
     masterWave.current.seekTo(progress);
     mixWave.current.seekTo(progress);
   };
@@ -76,7 +80,33 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags,
     return () => window.removeEventListener('luxury-player:play', handleGlobalPlay);
   }, []);
 
-  // --- DIBUJAR ESPECTRO FANTASMA ---
+  const analyzeAudio = (master: WaveSurfer, mix: WaveSurfer) => {
+    try {
+      const masterBuffer = master.getDecodedData();
+      const mixBuffer = mix.getDecodedData();
+      if (!masterBuffer || !mixBuffer) return;
+
+      const rawMaster = masterBuffer.getChannelData(0);
+      let sumMaster = 0;
+      const step = Math.ceil(rawMaster.length / 1000);
+      for (let i = 0; i < rawMaster.length; i += step) sumMaster += rawMaster[i] * rawMaster[i];
+      const rmsMaster = Math.sqrt(sumMaster / (rawMaster.length / step));
+      const db = 20 * Math.log10(rmsMaster);
+      setDetectedLufs(`${(db + 2.5).toFixed(1)} LUFS`);
+
+      const rawMix = mixBuffer.getChannelData(0);
+      let sumMix = 0;
+      for (let i = 0; i < rawMix.length; i += step) sumMix += rawMix[i] * rawMix[i];
+      const rmsMix = Math.sqrt(sumMix / (rawMix.length / step));
+      const ratio = rmsMix / rmsMaster;
+      setCalculatedReduction(Math.min(Math.max(ratio, 0.1), 1.0));
+      setTotalDuration(formatTime(master.getDuration()));
+    } catch (e) {
+      setDetectedLufs("-.- LUFS");
+    }
+  };
+
+  // --- DIBUJAR ESPECTRO FANTASMA (SUTIL) ---
   const drawSpectrum = () => {
     if (!analyserRef.current || !spectrumCanvasRef.current || !isComponentMounted.current) return;
     const canvas = spectrumCanvasRef.current;
@@ -101,7 +131,9 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags,
       if (!isComponentMounted.current) return;
       animationRef.current = requestAnimationFrame(draw);
       analyserRef.current!.getByteFrequencyData(dataArray);
+      
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+
       ctx.shadowBlur = 8;
       ctx.shadowColor = "rgba(212, 175, 55, 0.15)";
 
@@ -158,22 +190,26 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags,
     isComponentMounted.current = true;
     if (!masterContainerRef.current || !mixContainerRef.current) return;
 
-    // COLORES PRO
     const ctx = document.createElement('canvas').getContext('2d')!;
+
+    // MASTER COLORES (SOLIDOS)
     const gradMasterProgress = ctx.createLinearGradient(0, 0, 0, 100);
     gradMasterProgress.addColorStop(0, '#FFFFFF'); 
     gradMasterProgress.addColorStop(0.3, '#FFD700'); 
     gradMasterProgress.addColorStop(1, '#FF8C00'); 
-    
+    const waveColorMaster = '#B8860B';
+
+    // MIX COLORES (SOLIDOS)
     const gradMixProgress = ctx.createLinearGradient(0, 0, 0, 100);
     gradMixProgress.addColorStop(0, '#FFFFFF'); 
     gradMixProgress.addColorStop(1, '#00FFFF');
+    const waveColorMix = '#A0A0A0';
 
     const commonOptions = {
       cursorColor: 'transparent',
       cursorWidth: 0,
-      barWidth: 2, 
-      barGap: 3,
+      barWidth: 3, 
+      barGap: 2,
       barRadius: 2,
       height: 80,
       barAlign: 'center' as const,
@@ -185,36 +221,32 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags,
       ...commonOptions,
       container: masterContainerRef.current,
       progressColor: gradMasterProgress,
-      waveColor: 'rgba(184, 134, 11, 0.4)', 
+      waveColor: waveColorMaster,
     });
 
     mixWave.current = WaveSurfer.create({
       ...commonOptions,
       container: mixContainerRef.current,
       progressColor: gradMixProgress,
-      waveColor: 'rgba(75, 85, 99, 0.5)', 
+      waveColor: waveColorMix,
     });
 
     const loadAudios = async () => {
         try {
-          // Cargamos sin bloquear
           await Promise.all([
               masterWave.current?.load(afterUrl),
               mixWave.current?.load(beforeUrl)
           ]);
           if (!isComponentMounted.current) return;
-          
           masterWave.current?.setVolume(1);
           mixWave.current?.setVolume(0);
-          
-          // Eliminamos el análisis pesado. Solo obtenemos duración.
-          if(masterWave.current) {
-             // Pequeño delay para asegurar que la duración esté lista
-             setTimeout(() => {
-                 if (masterWave.current) setTotalDuration(formatTime(masterWave.current.getDuration()));
-             }, 200);
+          if (masterWave.current && mixWave.current) {
+            setTimeout(() => {
+                if (masterWave.current && mixWave.current) {
+                    analyzeAudio(masterWave.current, mixWave.current);
+                }
+            }, 500);
           }
-          
           setIsReady(true);
         } catch (error) {
           console.error("Error loading audio");
@@ -252,9 +284,15 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags,
 
     return () => {
       isComponentMounted.current = false;
-      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+      
+      // --- CORRECCIÓN DE TIPOS PARA VERCEL ---
+      if (animationRef.current !== null) {
+          cancelAnimationFrame(animationRef.current);
+      }
+      
       masterWave.current?.destroy();
       mixWave.current?.destroy();
+      
       if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
         audioContextRef.current.close();
       }
@@ -307,15 +345,14 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags,
             <button 
                 onClick={(e) => { e.stopPropagation(); setGainMatch(!gainMatch); }}
                 className={`flex items-center gap-1 px-2 py-1 rounded border text-[9px] font-bold tracking-wider transition-all ${gainMatch ? 'bg-green-900/30 border-green-500 text-green-400' : 'border-gray-800 text-gray-600 hover:border-gray-600'}`}
-                title="Igualar volumen (Aprox -6dB)"
+                title="Igualar volumen"
             >
                 <Volume2 size={10} />
                 <span>GAIN MATCH</span>
             </button>
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-md border border-[#D4AF37]/30 text-[#D4AF37] bg-[#D4AF37]/5 font-mono text-[10px]">
-                <Zap size={12} fill="#D4AF37" />
-                {/* AQUI SE MUESTRA EL DATO DIRECTO DE SANITY */}
-                <span className="tracking-wider font-bold">{lufs}</span>
+            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-md border font-mono text-[10px] transition-all duration-700 ${detectedLufs === "ANALIZANDO..." ? 'border-gray-800 text-gray-500' : 'border-[#D4AF37]/30 text-[#D4AF37] bg-[#D4AF37]/5'}`}>
+                {detectedLufs === "ANALIZANDO..." ? <Activity size={12} className="animate-spin" /> : <Zap size={12} fill="#D4AF37" />}
+                <span className="tracking-wider font-bold">{detectedLufs}</span>
             </div>
         </div>
       </div>
@@ -326,10 +363,19 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags,
         onClick={handleSeek} 
         className="relative h-24 mb-6 bg-black/60 rounded-lg border border-white/5 overflow-hidden transition-all duration-300 group-hover:bg-black/90 cursor-crosshair z-20 flex items-center justify-center"
       >
-        {/* Espectro Fantasma */}
-        <canvas ref={spectrumCanvasRef} className="w-full h-full" width={600} height={100} />
+        {/* CANVAS */}
+        <canvas 
+            ref={spectrumCanvasRef} 
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[85%] h-[75%]" 
+            width={600} 
+            height={100}
+            style={{
+                maskImage: 'linear-gradient(to right, transparent 0%, black 15%, black 85%, transparent 100%)',
+                WebkitMaskImage: 'linear-gradient(to right, transparent 0%, black 15%, black 85%, transparent 100%)'
+            }}
+        />
 
-        {/* Ondas */}
+        {/* Ondas Invisibles (Lógica de audio) */}
         <div className="absolute inset-0 w-full h-full z-10 pointer-events-none opacity-0">
             <div ref={masterContainerRef} className="absolute inset-0 w-full" />
             <div ref={mixContainerRef} className="absolute inset-0 w-full" />
