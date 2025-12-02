@@ -16,7 +16,7 @@ interface LuxuryPlayerProps {
 export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags, lufs }: LuxuryPlayerProps) {
   const playerId = useRef(Math.random().toString(36).substr(2, 9));
 
-  // Referencias
+  // Referencias DOM
   const containerRef = useRef<HTMLDivElement>(null);
   const masterContainerRef = useRef<HTMLDivElement>(null);
   const mixContainerRef = useRef<HTMLDivElement>(null);
@@ -27,8 +27,8 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags,
   const analyserRef = useRef<AnalyserNode | null>(null);
   const sourceNodesRef = useRef<Map<string, MediaElementAudioSourceNode>>(new Map());
   
-  // --- CORRECCIÓN PARA VERCEL (LÍNEA 29) ---
-  const animationRef = useRef<number | null>(null); 
+  // --- CORRECCIÓN PARA VERCEL: Inicializar en null ---
+  const animationRef = useRef<number | null>(null);
   
   const isComponentMounted = useRef(true);
   const capsRef = useRef<number[]>([]); 
@@ -53,6 +53,7 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags,
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
+  // Click Maestro
   const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!masterWave.current || !mixWave.current || !containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
@@ -103,6 +104,7 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags,
       analyserRef.current!.getByteFrequencyData(dataArray);
       
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+
       ctx.shadowBlur = 8;
       ctx.shadowColor = "rgba(212, 175, 55, 0.15)";
 
@@ -164,12 +166,10 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags,
     gradMasterProgress.addColorStop(0, '#FFFFFF'); 
     gradMasterProgress.addColorStop(0.3, '#FFD700'); 
     gradMasterProgress.addColorStop(1, '#FF8C00'); 
-    const waveColorMaster = '#B8860B';
-
+    
     const gradMixProgress = ctx.createLinearGradient(0, 0, 0, 100);
     gradMixProgress.addColorStop(0, '#FFFFFF'); 
     gradMixProgress.addColorStop(1, '#00FFFF');
-    const waveColorMix = '#A0A0A0';
 
     const commonOptions = {
       cursorColor: 'transparent',
@@ -187,14 +187,14 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags,
       ...commonOptions,
       container: masterContainerRef.current,
       progressColor: gradMasterProgress,
-      waveColor: waveColorMaster,
+      waveColor: '#B8860B', 
     });
 
     mixWave.current = WaveSurfer.create({
       ...commonOptions,
       container: mixContainerRef.current,
       progressColor: gradMixProgress,
-      waveColor: waveColorMix,
+      waveColor: '#4A5568', 
     });
 
     const loadAudios = async () => {
@@ -208,6 +208,7 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags,
           masterWave.current?.setVolume(1);
           mixWave.current?.setVolume(0);
           
+          // Solo duración
           if(masterWave.current) {
              setTimeout(() => {
                  if (masterWave.current) setTotalDuration(formatTime(masterWave.current.getDuration()));
@@ -231,6 +232,7 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags,
             if (!analyserRef.current) {
                 analyserRef.current = audioContextRef.current.createAnalyser();
                 analyserRef.current.fftSize = 256; 
+                analyserRef.current.smoothingTimeConstant = 0.5; 
                 analyserRef.current.connect(audioContextRef.current.destination);
                 drawSpectrum();
             }
@@ -248,7 +250,7 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags,
     masterWave.current.on('pause', () => mixWave.current?.pause());
     masterWave.current.on('finish', () => setIsPlaying(false));
 
-    // --- LIMPIEZA SEGURA (También ajustada) ---
+    // --- LIMPIEZA SEGURA ---
     return () => {
       isComponentMounted.current = false;
       
@@ -329,6 +331,7 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags,
         onClick={handleSeek} 
         className="relative h-24 mb-6 bg-black/60 rounded-lg border border-white/5 overflow-hidden transition-all duration-300 group-hover:bg-black/90 cursor-crosshair z-20 flex items-center justify-center"
       >
+        {/* CANVAS */}
         <canvas 
             ref={spectrumCanvasRef} 
             className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[85%] h-[75%]" 
@@ -340,6 +343,7 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags,
             }}
         />
 
+        {/* Ondas */}
         <div className="absolute inset-0 w-full h-full z-10 pointer-events-none opacity-0">
             <div ref={masterContainerRef} className="absolute inset-0 w-full" />
             <div ref={mixContainerRef} className="absolute inset-0 w-full" />
