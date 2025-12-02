@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import WaveSurfer from 'wavesurfer.js';
-import { Play, Pause, Loader2, Activity, Zap, Volume2, Clock } from 'lucide-react';
+import { Play, Pause, Loader2, Activity, Zap, Volume2, Layers, Clock } from 'lucide-react';
 
 interface LuxuryPlayerProps {
   beforeUrl: string;
@@ -26,12 +26,12 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags 
   const analyserRef = useRef<AnalyserNode | null>(null);
   const sourceNodesRef = useRef<Map<string, MediaElementAudioSourceNode>>(new Map());
   
-  // --- CORRECCIÓN PARA VERCEL (TypeScript Strict) ---
+  // --- CORRECCIÓN PARA VERCEL (Línea 29) ---
+  // Antes: useRef<number>(); -> Error
+  // Ahora: useRef<number | null>(null); -> Correcto
   const animationRef = useRef<number | null>(null);
   
   const isComponentMounted = useRef(true);
-  
-  // Referencia para los "Picos Voladores"
   const capsRef = useRef<number[]>([]); 
 
   const masterWave = useRef<WaveSurfer | null>(null);
@@ -43,6 +43,7 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags 
   const [isReady, setIsReady] = useState(false);
   const [detectedLufs, setDetectedLufs] = useState<string>("ANALIZANDO...");
   
+  // Gain Match
   const [gainMatch, setGainMatch] = useState(false);
   const [calculatedReduction, setCalculatedReduction] = useState(1);
 
@@ -55,7 +56,7 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags 
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
-  // --- CLICK MAESTRO ---
+  // Click Maestro
   const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!masterWave.current || !mixWave.current || !containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
@@ -88,9 +89,10 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags 
 
       const rawMaster = masterBuffer.getChannelData(0);
       let sumMaster = 0;
-      const step = Math.ceil(rawMaster.length / 1000);
+      const step = Math.ceil(rawMaster.length / 10000);
       for (let i = 0; i < rawMaster.length; i += step) sumMaster += rawMaster[i] * rawMaster[i];
       const rmsMaster = Math.sqrt(sumMaster / (rawMaster.length / step));
+      
       const db = 20 * Math.log10(rmsMaster);
       setDetectedLufs(`${(db + 2.5).toFixed(1)} LUFS`);
 
@@ -98,15 +100,16 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags 
       let sumMix = 0;
       for (let i = 0; i < rawMix.length; i += step) sumMix += rawMix[i] * rawMix[i];
       const rmsMix = Math.sqrt(sumMix / (rawMix.length / step));
+
       const ratio = rmsMix / rmsMaster;
-      setCalculatedReduction(Math.min(Math.max(ratio, 0.1), 1.0));
+      const safeRatio = Math.min(Math.max(ratio, 0.1), 1.0); 
+      setCalculatedReduction(safeRatio);
       setTotalDuration(formatTime(master.getDuration()));
     } catch (e) {
       setDetectedLufs("-.- LUFS");
     }
   };
 
-  // --- DIBUJAR ESPECTRO FANTASMA (SUTIL) ---
   const drawSpectrum = () => {
     if (!analyserRef.current || !spectrumCanvasRef.current || !isComponentMounted.current) return;
     const canvas = spectrumCanvasRef.current;
@@ -192,18 +195,16 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags 
 
     const ctx = document.createElement('canvas').getContext('2d')!;
 
-    // MASTER COLORES (SOLIDOS)
+    // MASTER COLORES
     const gradMasterProgress = ctx.createLinearGradient(0, 0, 0, 100);
     gradMasterProgress.addColorStop(0, '#FFFFFF'); 
     gradMasterProgress.addColorStop(0.3, '#FFD700'); 
     gradMasterProgress.addColorStop(1, '#FF8C00'); 
-    const waveColorMaster = '#B8860B';
 
-    // MIX COLORES (SOLIDOS)
+    // MIX COLORES
     const gradMixProgress = ctx.createLinearGradient(0, 0, 0, 100);
     gradMixProgress.addColorStop(0, '#FFFFFF'); 
     gradMixProgress.addColorStop(1, '#00FFFF');
-    const waveColorMix = '#A0A0A0';
 
     const commonOptions = {
       cursorColor: 'transparent',
@@ -221,14 +222,14 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags 
       ...commonOptions,
       container: masterContainerRef.current,
       progressColor: gradMasterProgress,
-      waveColor: waveColorMaster,
+      waveColor: '#B8860B', // Sólido para que se vea
     });
 
     mixWave.current = WaveSurfer.create({
       ...commonOptions,
       container: mixContainerRef.current,
       progressColor: gradMixProgress,
-      waveColor: waveColorMix,
+      waveColor: '#4A5568', // Sólido
     });
 
     const loadAudios = async () => {
@@ -238,15 +239,19 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags 
               mixWave.current?.load(beforeUrl)
           ]);
           if (!isComponentMounted.current) return;
+          
           masterWave.current?.setVolume(1);
           mixWave.current?.setVolume(0);
+          
           if (masterWave.current && mixWave.current) {
-            setTimeout(() => {
-                if (masterWave.current && mixWave.current) {
-                    analyzeAudio(masterWave.current, mixWave.current);
-                }
-            }, 500);
+             // Delay para asegurar carga y análisis
+             setTimeout(() => {
+                 if (masterWave.current && mixWave.current) {
+                     analyzeAudio(masterWave.current, mixWave.current);
+                 }
+             }, 500);
           }
+          
           setIsReady(true);
         } catch (error) {
           console.error("Error loading audio");
@@ -282,17 +287,14 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags 
     masterWave.current.on('pause', () => mixWave.current?.pause());
     masterWave.current.on('finish', () => setIsPlaying(false));
 
+    // --- CORRECCIÓN LIMPIEZA PARA VERCEL ---
     return () => {
       isComponentMounted.current = false;
-      
-      // --- CORRECCIÓN DE TIPOS PARA VERCEL ---
       if (animationRef.current !== null) {
           cancelAnimationFrame(animationRef.current);
       }
-      
       masterWave.current?.destroy();
       mixWave.current?.destroy();
-      
       if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
         audioContextRef.current.close();
       }
@@ -375,10 +377,10 @@ export default function LuxuryPlayer({ beforeUrl, afterUrl, title, artist, tags 
             }}
         />
 
-        {/* Ondas Invisibles (Lógica de audio) */}
+        {/* Ondas */}
         <div className="absolute inset-0 w-full h-full z-10 pointer-events-none opacity-0">
-            <div ref={masterContainerRef} className="absolute inset-0 w-full" />
-            <div ref={mixContainerRef} className="absolute inset-0 w-full" />
+            <div ref={masterContainerRef} className={`absolute inset-0 w-full transition-opacity duration-300 ${isMaster ? 'opacity-100' : 'opacity-0'}`} />
+            <div ref={mixContainerRef} className={`absolute inset-0 w-full transition-opacity duration-300 ${!isMaster ? 'opacity-100' : 'opacity-0'}`} />
         </div>
 
         {!isReady && (
